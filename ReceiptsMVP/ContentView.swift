@@ -5,6 +5,8 @@
 //  Created by Tilek Maralov on 16/9/25.
 //
 
+// Привет, это мой первый проект на SWIFT
+
 import SwiftUI
 import VisionKit
 import SwiftData
