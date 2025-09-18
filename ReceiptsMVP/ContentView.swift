@@ -178,10 +178,11 @@ struct ContentView: View {
             .sheet(isPresented: $isScanning) {
                 QRScanSheet { url, image in
                     isScanning = false
-                    Task { await handleScanned(url: url, photo: image) }  // ← передаём фото
+                    Task { await handleScanned(url: url, photo: image) }   // ← передаём фото
                 }
                 .ignoresSafeArea()
             }
+
             // алерт ошибок
             .alert("Ошибка",
                    isPresented: Binding(
@@ -208,14 +209,12 @@ struct ContentView: View {
     private func handleScanned(url: URL, photo: UIImage?) async {
         isLoading = true
         defer { isLoading = false }
-
         do {
             let parsed = try await fetcher.fetchAndParse(from: url)
             let store = ReceiptStore(modelContext)
             let (saved, _) = try store.saveOrUpdate(parsed: parsed, sourceURL: url, photo: photo)
-            pendingReceipt = saved
+            pendingReceipt = saved   // навигация сработает в .onChange закрытия шторки
         } catch {
-            // твой обработчик ошибок как был
             errorMessage = "Не удалось получить чек: \(error.localizedDescription)"
         }
     }

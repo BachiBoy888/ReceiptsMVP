@@ -31,7 +31,7 @@ private enum ScanState: Equatable {
 }
 
 struct QRScanSheet: View {
-    /// Возвращаем в родителя URL чека + фото (если скан с камеры или из галереи)
+    /// Возвращаем в родителя URL чека + фото (если из камеры или из галереи)
     var onFound: (URL, UIImage?) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -51,14 +51,14 @@ struct QRScanSheet: View {
             topBar
         }
         .onAppear { state = .scanning }
-        // iOS 17+: просто используем selection, без костылей с isPresented
-        //.photosPicker(selection: $pickerItem, matching: .images, photoLibrary: .shared())
+        // ⚠️ Без .photosPicker(isPresented:) — только кнопка PhotosPicker + onChange
         .onChange(of: pickerItem) { _, newValue in
             guard let item = newValue else { return }
             Task { await detectQRFromPhoto(item) }
         }
     }
 
+    // Верхняя панель: закрыть + кнопка «Галерея»
     private var topBar: some View {
         VStack {
             HStack {
@@ -84,11 +84,13 @@ struct QRScanSheet: View {
         }
     }
 
+    // Проверка, что это URL чека налоговой
     private func isValidReceiptURL(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased(), host == "tax.salyk.kg" else { return false }
         return url.absoluteString.contains("/ticket")
     }
 
+    // Единый обработчик успешного скана (камера/галерея)
     private func handleScanned(url: URL, image: UIImage?) {
         withAnimation(.easeInOut(duration: 0.2)) { state = .scanning }
         if isValidReceiptURL(url) {
@@ -96,7 +98,7 @@ struct QRScanSheet: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) { state = .success }
             // отдаём наверх и закрываем шторку
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                onFound(url, image)
+                onFound(url, image)   // ← фото пойдёт в ReceiptStore через ContentView
                 dismiss()
             }
         } else {
@@ -108,7 +110,7 @@ struct QRScanSheet: View {
         }
     }
 
-    // Чтение QR из выбранного изображения
+    // Распознаём QR из выбранного фото
     private func detectQRFromPhoto(_ item: PhotosPickerItem) async {
         defer { pickerItem = nil }
         do {
@@ -117,11 +119,8 @@ struct QRScanSheet: View {
 
             let context = CIContext()
             let ciImage: CIImage
-            if let cg = uiImage.cgImage {
-                ciImage = CIImage(cgImage: cg)
-            } else {
-                ciImage = CIImage(image: uiImage) ?? CIImage()
-            }
+            if let cg = uiImage.cgImage { ciImage = CIImage(cgImage: cg) }
+            else { ciImage = CIImage(image: uiImage) ?? CIImage() }
 
             let detector = CIDetector(
                 ofType: CIDetectorTypeQRCode,
@@ -132,8 +131,7 @@ struct QRScanSheet: View {
             let messages = features.compactMap { ($0 as? CIQRCodeFeature)?.messageString }
 
             if let payload = messages.first, let url = URL(string: payload), isValidReceiptURL(url) {
-                // ВАЖНО: передаём фото наверх — ContentView сохранит его в ReceiptStore
-                handleScanned(url: url, image: uiImage)
+                handleScanned(url: url, image: uiImage) // передаём фото наверх — сохранится в базе
             } else {
                 if showHaptic { UINotificationFeedbackGenerator().notificationOccurred(.error) }
                 withAnimation { state = .error("Файл не содержит QR чека") }

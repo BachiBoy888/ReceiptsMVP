@@ -20,14 +20,19 @@ struct QRScannerView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: ScannerVC, context: Context) {}
 }
 
-final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate, AVCapturePhotoCaptureDelegate {
+final class ScannerVC: UIViewController,
+                       AVCaptureMetadataOutputObjectsDelegate,
+                       AVCapturePhotoCaptureDelegate {
+
     var onFound: ((URL, UIImage?) -> Void)?
 
     private let session = AVCaptureSession()
     private let metadataOutput = AVCaptureMetadataOutput()
     private let photoOutput = AVCapturePhotoOutput()
     private var previewLayer: AVCaptureVideoPreviewLayer!
+
     private var isProcessing = false
+    private var pendingURL: URL?
     private var lastCapturedImage: UIImage?
 
     override func viewDidLoad() {
@@ -36,15 +41,12 @@ final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate,
     }
 
     private func setupCamera() {
-        // Разрешение на камеру (по-хорошему, обработать .denied/.restricted в UI)
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .notDetermined:
+        // Разрешение на камеру (минимальная обработка)
+        if AVCaptureDevice.authorizationStatus(for: .video) == .notDetermined {
             AVCaptureDevice.requestAccess(for: .video) { _ in }
-        default:
-            break
         }
 
-        // 1) Начинаем конфигурацию
+        // 1) Начало конфигурации
         session.beginConfiguration()
 
         // 2) Input
@@ -66,10 +68,10 @@ final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate,
             session.addOutput(photoOutput)
         }
 
-        // 4) Завершаем конфигурацию ДО startRunning()
+        // 4) Завершение конфигурации ДО startRunning
         session.commitConfiguration()
 
-        // 5) Превью-слой — на главном потоке
+        // 5) Превью-слой
         if previewLayer == nil {
             let layer = AVCaptureVideoPreviewLayer(session: session)
             layer.videoGravity = .resizeAspectFill
@@ -81,7 +83,7 @@ final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate,
             previewLayer.frame = view.bounds
         }
 
-        // 6) Запускаем сессию уже после commitConfiguration
+        // 6) Запуск уже после commitConfiguration
         if !session.isRunning {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 self?.session.startRunning()
@@ -97,22 +99,17 @@ final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate,
               let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               obj.type == .qr,
               let str = obj.stringValue,
-              let url = URL(string: str)
-        else { return }
+              let url = URL(string: str) else { return }
 
         isProcessing = true
+        pendingURL = url
 
-        // Сначала делаем фото, потом возвращаем URL + фото
+        // Снимем кадр, затем вернём URL + фото
         let settings = AVCapturePhotoSettings()
         photoOutput.capturePhoto(with: settings, delegate: self)
-
-        // Запомним URL и вернёмся к нему в delegate
-        pendingURL = url
     }
 
-    private var pendingURL: URL?
-
-    // Получили фото
+    // Фото получили (данные кадра)
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishProcessingPhoto photo: AVCapturePhoto,
                      error: Error?) {
@@ -121,23 +118,20 @@ final class ScannerVC: UIViewController, AVCaptureMetadataOutputObjectsDelegate,
         }
     }
 
+    // Съёмка завершена — отдаём результат
     func photoOutput(_ output: AVCapturePhotoOutput,
                      didFinishCaptureFor resolvedSettings: AVCaptureResolvedPhotoSettings,
                      error: Error?) {
         session.stopRunning()
-        defer { isProcessing = false }
-
         let image = lastCapturedImage
         let url = pendingURL
         pendingURL = nil
         lastCapturedImage = nil
-
+        isProcessing = false
         if let url { onFound?(url, image) }
     }
-    
+
     deinit {
-            if session.isRunning {
-                session.stopRunning()
-            }
-        }
+        if session.isRunning { session.stopRunning() }
+    }
 }
