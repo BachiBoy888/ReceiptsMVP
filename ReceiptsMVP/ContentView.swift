@@ -29,12 +29,19 @@ struct DailySum: Identifiable, Hashable {
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Receipt.date, order: .reverse) var receipts: [Receipt]
+    enum SpendPeriod: String, CaseIterable, Identifiable {
+        case thisMonth = "Этот месяц"
+        case lastMonth = "Прошлый месяц"
+        case lastTwoMonths = "за 30 дней"
 
+        var id: Self { self }
+    }
+
+    @State private var selectedPeriod: SpendPeriod = .lastTwoMonths
     @State private var isScanning = false
     @State private var isLoading = false
     @State private var errorMessage: String?
-    @State private var selectedReceipt: ReceiptSelection?   // было: Receipt?
-    @State private var pendingReceipt: Receipt?            // ок
+    @State private var pendingSelection: ReceiptSelection?
     @State private var lastURL: URL?
 
     let fetcher = ReceiptFetcher()
@@ -69,65 +76,135 @@ struct ContentView: View {
     
     var body: some View {
         NavigationStack {                                   // ⬅️ используем NavigationStack
-            // График расходов за 60 дней
-            VStack(alignment: .leading, spacing: 8) {
+         
+            // Фиксированный заголовок приложения
+            HStack {
+                Text("Мои чеки")
+                    .font(.largeTitle).bold()
+                Spacer()
+            }
+            .padding(.horizontal)
+            .padding(.top)
+            
+            // ====== Заголовок и выбор периода + сумма + график ======
+            VStack(alignment: .leading, spacing: 12) {
+
+                // Переключатель периода
+                Picker("Период", selection: $selectedPeriod) {
+                    ForEach(SpendPeriod.allCases) { p in
+                        Text(p.rawValue).tag(p)
+                    }
+                }
+                .pickerStyle(.segmented)
+
+                // Сумма за период — КРУПНО и в KGS
+                let total = totalAmount(in: selectedPeriod).doubleValue
                 HStack {
-                    Text("Расходы (последние 2 месяца)")
-                        .font(.headline)
-                    Spacer()
-                    Text(totalFor60Days, format: .currency(code: Locale.current.currency?.identifier ?? "KGS"))
+                    Text("Затраты за период")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(total, format: kgsFmt)
+                        .font(.system(size: 22, weight: .bold, design: .default))
+                        .monospacedDigit()
                 }
 
-                if chartDataLast60Days.isEmpty {
-                    // Плейсхолдер, когда чеков ещё нет
+                // График за период — столбики «как раньше», с аккуратными осями
+                let bins = dayBins(for: selectedPeriod)
+                if bins.isEmpty {
                     ZStack {
-                        RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial)
-                        Text("Пока нет данных — отсканируйте первый чек")
+                        RoundedRectangle(cornerRadius: 6).fill(.ultraThinMaterial)
+                        Text("Нет данных за выбранный период")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                            .padding(.horizontal)
                     }
-                    .frame(height: 140)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                    .frame(height: 160)
                 } else {
-                    Chart(chartDataLast60Days) { point in
+                    let (start, end) = periodRange(selectedPeriod)
+                    let maxY = max(bins.map { $0.amount }.max() ?? 0, 1)
+                    let paddedMaxY = maxY * 1.2  // чуть больше сверху
+                    
+                    // адаптивная ширина столбиков (чтобы не слипались)
+                    let count = bins.count
+                    let barWidth: CGFloat = count > 45 ? 4 : (count > 30 ? 6 : 8)
+
+                    Chart(bins) { bin in
                         BarMark(
-                            x: .value("Дата", point.date, unit: .day),
-                            y: .value("Сумма", point.total)
+                            x: .value("Дата", bin.day),
+                            y: .value("Сумма", bin.amount),
+                            width: .fixed(barWidth)      // ⬅️ ширина столбика фиксирована
                         )
+                        .cornerRadius(3)
+                      
                     }
-                    // Тики по оси X раз в неделю — чище выглядит
+                    .chartXScale(domain: start...end)
+                    .chartYScale(domain: 0...paddedMaxY)
+
+                    // Ось X: показываем подписи через одну
                     .chartXAxis {
-                        AxisMarks(values: .stride(by: .day, count: 7)) { _ in
-                            AxisGridLine()
-                            AxisTick()
-                            AxisValueLabel(format: .dateTime.day().month(.abbreviated))
+                        AxisMarks(values: .stride(by: .day, count: 10)) { value in
+                            if let date = value.as(Date.self) {
+                                let s = Calendar.current.startOfDay(for: start)
+                                let idx = Calendar.current.dateComponents([.day], from: s, to: date).day ?? 0
+                                if idx % 2 == 0 {  // ← каждая 2-я метка
+                                    AxisGridLine().foregroundStyle(.gray.opacity(0.3))
+                                    AxisTick(length: 4)
+                                    AxisValueLabel {
+                                        Text(date, format: Date.FormatStyle().day().month(.abbreviated))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
                         }
                     }
+
+                    // Ось Y слева, аккуратные метки
                     .chartYAxis {
-                        AxisMarks(position: .leading)
+                        AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                            AxisGridLine().foregroundStyle(.gray.opacity(0.3))
+                            AxisTick(length: 4)
+                            AxisValueLabel {
+                                if let d = value.as(Double.self) {
+                                    let whole = Int(d)
+                                    if d == Double(whole) {
+                                        Text("\(whole)")
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    } else {
+                                        Text(d, format: .number.precision(.fractionLength(2)))
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .frame(height: 180)
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    .animation(.easeInOut(duration: 0.25), value: chartDataLast60Days)
+                    .chartPlotStyle { plot in
+                        plot
+                            .padding(.leading, 6)
+                            .padding(.trailing, 6)
+                            .padding(.top, 0)
+                    }
+                    .frame(height: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+
                 }
+
+
             }
-            .padding(.top, 12)
+            .padding([.horizontal, .top])
 
             
             VStack(spacing: 0) {
-
                 // Кнопка "Сканировать QR"
                 Button {
                     isScanning = true
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "qrcode.viewfinder")
-                        Text("Сканировать QR")
+                        Text("Сканировать QR на чеке")
                             .fontWeight(.semibold)
                     }
                     .frame(maxWidth: .infinity)
@@ -143,19 +220,27 @@ struct ContentView: View {
                     // Список чеков
                     List(receipts) { r in
                         NavigationLink(destination: ReceiptDetailView(receipt: r)) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(r.merchant.isEmpty ? "Неизвестно" : r.merchant).font(.headline)
-                                Text(r.date.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                HStack {
-                                    Text("Итого: \(r.total.doubleValue, format: twoFrac)")
-                                    if let inn = r.inn, !inn.isEmpty { Text("ИНН \(inn)") }
+                            HStack(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(venueName(for: r))
+                                        .font(.headline)
+                                        .lineLimit(1)
+                                    Text(r.date.formatted(date: .abbreviated, time: .shortened))
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
                                 }
-                                .font(.footnote)
+
+                                Spacer()
+
+                                Text(r.total.doubleValue, format: twoFrac)
+                                    .font(.headline)
+                                    .monospacedDigit()
+                                    .foregroundStyle(.primary)
                             }
+                            .contentShape(Rectangle())
                         }
                     }
+
                     .listStyle(.plain)
                     .padding(.top, 8)
 
@@ -169,9 +254,9 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationTitle("Мои чеки")
+            .toolbar(.hidden, for: .navigationBar)
             // навигация к только что сохранённому чеку
-            .navigationDestination(item: $selectedReceipt) { sel in
+            .navigationDestination(item: $pendingSelection) { sel in
                 ReceiptDetailView(receipt: sel.receipt)
             }
             // модальное окно со сканером
@@ -191,17 +276,6 @@ struct ContentView: View {
                    ),
                    actions: { Button("OK") { errorMessage = nil } },
                    message: { Text(errorMessage ?? "") })
-            
-            .onChange(of: isScanning) { _, newValue in
-                if !newValue, let r = pendingReceipt {
-                    selectedReceipt = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        selectedReceipt = ReceiptSelection(receipt: r)  // всегда новый UUID
-                        pendingReceipt = nil
-                    }
-                }
-            }
-
         }
     }
 
@@ -213,16 +287,102 @@ struct ContentView: View {
             let parsed = try await fetcher.fetchAndParse(from: url)
             let store = ReceiptStore(modelContext)
             let (saved, _) = try store.saveOrUpdate(parsed: parsed, sourceURL: url, photo: photo)
-            pendingReceipt = saved   // навигация сработает в .onChange закрытия шторки
+            // ВАЖНО: сначала сбросить, потом поставить новый selection с новым UUID
+            pendingSelection = nil
+            DispatchQueue.main.async {
+                pendingSelection = ReceiptSelection(receipt: saved)
+            }
         } catch {
             errorMessage = "Не удалось получить чек: \(error.localizedDescription)"
         }
     }
-    
-    
+    /// Берём название заведения из address (часть до первой запятой).
+    /// Если адрес пустой — используем merchant (или "Неизвестно").
+    private func venueName(for r: Receipt) -> String {
+        if let address = r.address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let first = address.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: true).first
+            let name = String(first ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if !name.isEmpty { return name }
+        }
+        return r.merchant.isEmpty ? "Неизвестно" : r.merchant
+    }
+    /// Диапазон дат для выбранного периода (start включительно, end исключительно)
+    private func periodRange(_ p: SpendPeriod, now: Date = Date()) -> (start: Date, end: Date) {
+        let cal = Calendar.current
+        switch p {
+        case .thisMonth:
+            let start = cal.date(from: cal.dateComponents([.year, .month], from: now))!
+            let end = cal.date(byAdding: .month, value: 1, to: start)!
+            return (start, end)
+        case .lastMonth:
+            let startOfThis = cal.date(from: cal.dateComponents([.year, .month], from: now))!
+            let start = cal.date(byAdding: .month, value: -1, to: startOfThis)!
+            return (start, startOfThis)
+        case .lastTwoMonths:
+            let startOfThis = cal.date(from: cal.dateComponents([.year, .month], from: now))!
+            let start = cal.date(byAdding: .month, value: -1, to: startOfThis)!
+            let end = cal.date(byAdding: .month, value: 1, to: startOfThis)! // до начала след. месяца = покрывает текущий
+            return (start, end)
+        }
+    }
+
+    /// Чеки в пределах периода
+    private func receipts(in period: SpendPeriod) -> [Receipt] {
+        let (start, end) = periodRange(period)
+        return receipts.filter { $0.date >= start && $0.date < end }
+    }
+
+    /// Сумма за период
+    private func totalAmount(in period: SpendPeriod) -> Decimal {
+        receipts(in: period).reduce(Decimal(0)) { $0 + $1.total }
+    }
+
+    /// Дневные точки для графика (сумма по дням)
+    private struct DayPoint: Identifiable { let id = UUID(); let day: Date; let amount: Double }
+
+    private func chartPoints(for period: SpendPeriod) -> [DayPoint] {
+        let cal = Calendar.current
+        let periodReceipts = receipts(in: period)
+        let grouped = Dictionary(grouping: periodReceipts) { r in
+            cal.startOfDay(for: r.date)
+        }
+        return grouped.keys.sorted().map { day in
+            let daySum = grouped[day]!.reduce(Decimal(0)) { $0 + $1.total }
+            return DayPoint(day: day, amount: daySum.doubleValue)
+        }
+    }
+    /// Точка графика: сумма за конкретный день (все дни периода, даже если чеков не было)
+    private struct DayBin: Identifiable { let id = UUID(); let day: Date; let amount: Double }
+
+    private func dayBins(for period: SpendPeriod) -> [DayBin] {
+        let cal = Calendar.current
+        let (start, end) = periodRange(period)
+
+        // сгруппируем чеки по дню
+        let grouped = Dictionary(grouping: receipts.filter { $0.date >= start && $0.date < end }) { r in
+            cal.startOfDay(for: r.date)
+        }
+        let sumByDay: [Date: Double] = grouped.mapValues { arr in
+            arr.reduce(Decimal(0)) { $0 + $1.total }.doubleValue
+        }
+
+        // заполним ВСЕ дни периода, включая «нулевые»
+        var bins: [DayBin] = []
+        var d = cal.startOfDay(for: start)
+        let endDay = cal.startOfDay(for: end)
+        while d < endDay {
+            let amount = sumByDay[d] ?? 0
+            bins.append(DayBin(day: d, amount: amount))
+            d = cal.date(byAdding: .day, value: 1, to: d)!
+        }
+        return bins
+    }
+
 }
 
 
 // === File-scope helpers (ВНЕ struct/class) ===
 
 let twoFrac: FloatingPointFormatStyle<Double> = .number.precision(.fractionLength(2))
+private let kgsFmt: FloatingPointFormatStyle<Double>.Currency =
+    .currency(code: "KGS").precision(.fractionLength(2))

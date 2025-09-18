@@ -14,52 +14,69 @@ import UIKit
 struct ReceiptDetailView: View {
     let receipt: Receipt
 
-    // Состояния
     @Environment(\.modelContext) private var modelContext
     @State private var isRestoringQR = false
     @State private var restoreMessage: String?
 
-    // Для встроенного предпросмотра сайта налоговой
+    // Встроенный предпросмотр сайта налоговой
     @State private var safariItem: SafariItem?
 
     private let twoFrac: FloatingPointFormatStyle<Double> = .number.precision(.fractionLength(2))
 
     var body: some View {
         List {
-            // Заголовок: продавец → переход в историю
+            // ===== Заголовок: СНАЧАЛА Заведение, ниже Организация =====
             Section {
+                // Заголовок — название заведения (из address, первая часть до запятой)
                 NavigationLink {
-                    MerchantHistoryView(merchant: receipt.merchant, inn: receipt.inn)
+                    MerchantHistoryView(venue: venueName(for: receipt))
                 } label: {
                     HStack(spacing: 6) {
-                        Text(receipt.merchant.isEmpty ? "Неизвестно" : receipt.merchant)
+                        Text(venueName(for: receipt).isEmpty ? "Заведение" : venueName(for: receipt))
                             .font(.title2).bold()
+                            .lineLimit(2)
                         Image(systemName: "chevron.right")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                 }
-                if let inn = receipt.inn, !inn.isEmpty {
-                    HStack {
-                        Text("ИНН"); Spacer(); Text(inn)
+
+                // Организация — юрлицо ниже отдельной строкой
+                NavigationLink {
+                    MerchantHistoryView(merchant: receipt.merchant, inn: receipt.inn)
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Организация")
+                        Spacer()
+                        Text(receipt.merchant.isEmpty ? "Неизвестно" : receipt.merchant)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.primary)
                     }
                 }
+
+                // Адрес
                 if let address = receipt.address, !address.isEmpty {
                     HStack(alignment: .top) {
-                        Text("Адрес"); Spacer(); Text(address).multilineTextAlignment(.trailing)
+                        Text("Адрес")
+                        Spacer()
+                        Text(address).multilineTextAlignment(.trailing)
                     }
                 }
+
+                // Дата
                 HStack {
                     Text("Дата"); Spacer()
                     Text(receipt.date.formatted(date: .long, time: .shortened))
                 }
+
+                // Итого
                 HStack {
                     Text("Итого"); Spacer()
                     Text(receipt.total.doubleValue, format: twoFrac).fontWeight(.semibold)
                 }
             }
 
-            // Позиции чека
+            // ===== Позиции чека =====
             if let items = decodeItems(receipt), !items.isEmpty {
                 Section("Позиции") {
                     ForEach(Array(items.enumerated()), id: \.offset) { _, it in
@@ -75,7 +92,7 @@ struct ReceiptDetailView: View {
                 }
             }
 
-            // QR к чеку налоговой — после списка позиций
+            // ===== QR к чеку налоговой =====
             Section {
                 if let qr = qrImage(from: receipt.sourceURL) {
                     VStack(alignment: .leading, spacing: 8) {
@@ -83,7 +100,7 @@ struct ReceiptDetailView: View {
                             .font(.footnote)
                             .foregroundStyle(.secondary)
 
-                        // Нажатие по QR — открываем встроенный Safari sheet
+                        // Тап по QR — открыть встроенный Safari sheet
                         Button {
                             if let url = URL(string: receipt.sourceURL) {
                                 safariItem = SafariItem(url: url)
@@ -147,7 +164,7 @@ struct ReceiptDetailView: View {
                 }
             }
 
-            // Фото чека (если сохранено)
+            // ===== Фото чека (если сохранено) =====
             if let path = receipt.photoPath, let img = loadImage(path) {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
@@ -161,7 +178,6 @@ struct ReceiptDetailView: View {
             }
         }
         .navigationTitle("Чек")
-        // ВСТРОЕННЫЙ PREVIEW Safari
         .sheet(item: $safariItem) { item in
             SafariView(url: item.url)
         }
@@ -172,6 +188,17 @@ struct ReceiptDetailView: View {
     private func decodeItems(_ r: Receipt) -> [ParsedItem]? {
         guard let json = r.itemsJSON, let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode([ParsedItem].self, from: data)
+    }
+
+    /// Извлекаем «название заведения» — первую часть адреса до запятой.
+    private func venueName(for r: Receipt) -> String {
+        if let address = r.address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if let first = address.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: true).first {
+                let name = String(first).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !name.isEmpty { return name }
+            }
+        }
+        return r.merchant.isEmpty ? "Неизвестно" : r.merchant
     }
 
     private func qrImage(from string: String) -> UIImage? {
@@ -224,7 +251,7 @@ private struct SafariView: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> SFSafariViewController {
         let vc = SFSafariViewController(url: url)
-        vc.dismissButtonStyle = .close  // встроенная кнопка «Закрыть»
+        vc.dismissButtonStyle = .close
         return vc
     }
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
