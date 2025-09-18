@@ -6,97 +6,226 @@
 //
 
 import SwiftUI
+import SwiftData
+import CoreImage.CIFilterBuiltins
 import SafariServices
+import UIKit
 
 struct ReceiptDetailView: View {
     let receipt: Receipt
-    @State private var showSafari = false
+
+    // Состояния
+    @Environment(\.modelContext) private var modelContext
+    @State private var isRestoringQR = false
+    @State private var restoreMessage: String?
+
+    // Для встроенного предпросмотра сайта налоговой
+    @State private var safariItem: SafariItem?
 
     private let twoFrac: FloatingPointFormatStyle<Double> = .number.precision(.fractionLength(2))
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-
-                // Основная информация
-                Text(receipt.merchant.isEmpty ? "Неизвестно" : receipt.merchant)
-                    .font(.title2).bold()
-
-                if let inn = receipt.inn, !inn.isEmpty {
-                    Text("ИНН: \(inn)")
-                }
-                if let address = receipt.address, !address.isEmpty {
-                    Text(address)
-                }
-
-                Text("Дата: \(receipt.date.formatted(date: .long, time: .standard))")
-
-                Text("Итого: \(receipt.total.doubleValue, format: twoFrac)")
-                    .bold()
-                    .padding(.top, 4)
-
-                // Список позиций
-                if let json = receipt.itemsJSON,
-                   let data = json.data(using: .utf8),
-                   let items = try? JSONDecoder().decode([ParsedItem].self, from: data),
-                   !items.isEmpty {
-
-                    Divider().padding(.vertical, 8)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        ForEach(Array(items.enumerated()), id: \.offset) { idx, it in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("\(idx + 1). \(it.name)")
-                                Text("Цена: \(it.price.doubleValue, format: twoFrac) × \(it.qty.doubleValue, format: twoFrac) = \(it.sum.doubleValue, format: twoFrac)")
-                                    .font(.footnote)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 4)
-                        }
+        List {
+            // Заголовок: продавец → переход в историю
+            Section {
+                NavigationLink {
+                    MerchantHistoryView(merchant: receipt.merchant, inn: receipt.inn)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(receipt.merchant.isEmpty ? "Неизвестно" : receipt.merchant)
+                            .font(.title2).bold()
+                        Image(systemName: "chevron.right")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                 }
+                if let inn = receipt.inn, !inn.isEmpty {
+                    HStack {
+                        Text("ИНН"); Spacer(); Text(inn)
+                    }
+                }
+                if let address = receipt.address, !address.isEmpty {
+                    HStack(alignment: .top) {
+                        Text("Адрес"); Spacer(); Text(address).multilineTextAlignment(.trailing)
+                    }
+                }
+                HStack {
+                    Text("Дата"); Spacer()
+                    Text(receipt.date.formatted(date: .long, time: .shortened))
+                }
+                HStack {
+                    Text("Итого"); Spacer()
+                    Text(receipt.total.doubleValue, format: twoFrac).fontWeight(.semibold)
+                }
+            }
 
-                // QR-код (после списка позиций)
-                if !receipt.sourceURL.isEmpty {
-                    Divider().padding(.vertical, 8)
+            // Позиции чека
+            if let items = decodeItems(receipt), !items.isEmpty {
+                Section("Позиции") {
+                    ForEach(Array(items.enumerated()), id: \.offset) { _, it in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(it.name)
+                                .font(.subheadline)
+                            Text("Кол-во: \(it.qty.doubleValue, format: twoFrac) · Цена: \(it.price.doubleValue, format: twoFrac) · Сумма: \(it.sum.doubleValue, format: twoFrac)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 2)
+                    }
+                }
+            }
 
-                    VStack(spacing: 8) {
-                        Text("QR из чека")
+            // QR к чеку налоговой — после списка позиций
+            Section {
+                if let qr = qrImage(from: receipt.sourceURL) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("QR к чеку налоговой")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
 
-                        QRCodeView(string: receipt.sourceURL, size: 180)
-                            .onTapGesture { showSafari = true }
-                            .accessibilityAddTraits(.isButton)
+                        // Нажатие по QR — открываем встроенный Safari sheet
+                        Button {
+                            if let url = URL(string: receipt.sourceURL) {
+                                safariItem = SafariItem(url: url)
+                            }
+                        } label: {
+                            Image(uiImage: qr)
+                                .resizable()
+                                .interpolation(.none)
+                                .scaledToFit()
+                                .frame(maxHeight: 200)
+                                .padding(12)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        }
+                        .buttonStyle(.plain)
 
-                        Text("Нажмите на QR, чтобы открыть сайт налоговой")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            Button {
+                                if let url = URL(string: receipt.sourceURL) {
+                                    safariItem = SafariItem(url: url)
+                                }
+                            } label: {
+                                Label("Открыть сайт налоговой", systemImage: "safari")
+                            }
+
+                            if receipt.photoPath != nil {
+                                Button {
+                                    Task { await restoreURLFromPhotoAndRefresh() }
+                                } label: {
+                                    if isRestoringQR {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Label("Восстановить из фото", systemImage: "arrow.clockwise")
+                                    }
+                                }
+                                .disabled(isRestoringQR)
+                            }
+                        }
+                        .font(.footnote)
+
+                        if let msg = restoreMessage {
+                            Text(msg).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.bottom, 4)
+                } else {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("QR недоступен")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        if receipt.photoPath != nil {
+                            Button {
+                                Task { await restoreURLFromPhotoAndRefresh() }
+                            } label: {
+                                if isRestoringQR {
+                                    ProgressView("Восстанавливаю…")
+                                } else {
+                                    Label("Восстановить ссылку из фото", systemImage: "arrow.clockwise")
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            .padding()
+
+            // Фото чека (если сохранено)
+            if let path = receipt.photoPath, let img = loadImage(path) {
+                Section {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Фото чека").font(.footnote).foregroundStyle(.secondary)
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+            }
         }
         .navigationTitle("Чек")
-        .sheet(isPresented: $showSafari) {
-            Group {
-                if let validURL = URL(string: receipt.sourceURL) {
-                    SFSafariView(url: validURL)
-                } else {
-                    Text("Некорректная ссылка")
-                }
+        // ВСТРОЕННЫЙ PREVIEW Safari
+        .sheet(item: $safariItem) { item in
+            SafariView(url: item.url)
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func decodeItems(_ r: Receipt) -> [ParsedItem]? {
+        guard let json = r.itemsJSON, let data = json.data(using: .utf8) else { return nil }
+        return try? JSONDecoder().decode([ParsedItem].self, from: data)
+    }
+
+    private func qrImage(from string: String) -> UIImage? {
+        guard !string.isEmpty, let data = string.data(using: .utf8) else { return nil }
+        let filter = CIFilter.qrCodeGenerator()
+        filter.setValue(data, forKey: "inputMessage")
+        filter.setValue("M",   forKey: "inputCorrectionLevel")
+        guard let out = filter.outputImage else { return nil }
+        let scale = CGAffineTransform(scaleX: 10, y: 10)
+        let scaled = out.transformed(by: scale)
+        let ctx = CIContext()
+        if let cg = ctx.createCGImage(scaled, from: scaled.extent) {
+            return UIImage(cgImage: cg)
+        }
+        return nil
+    }
+
+    private func loadImage(_ relativePath: String) -> UIImage? {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let url = base.appendingPathComponent(relativePath)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return UIImage(data: data)
+    }
+
+    @MainActor
+    private func restoreURLFromPhotoAndRefresh() async {
+        isRestoringQR = true
+        defer { isRestoringQR = false }
+        do {
+            let store = ReceiptStore(modelContext)
+            if try await store.restoreURLFromStoredPhoto(receipt) != nil {
+                restoreMessage = "Ссылка восстановлена"
+            } else {
+                restoreMessage = "Не удалось восстановить ссылку из фото"
             }
+        } catch {
+            restoreMessage = "Ошибка: \(error.localizedDescription)"
         }
     }
 }
 
-// Safari wrapper
-struct SFSafariView: UIViewControllerRepresentable {
+// MARK: - Safari sheet wrapper
+
+private struct SafariItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct SafariView: UIViewControllerRepresentable {
     let url: URL
     func makeUIViewController(context: Context) -> SFSafariViewController {
-        SFSafariViewController(url: url)
+        let vc = SFSafariViewController(url: url)
+        vc.dismissButtonStyle = .close  // встроенная кнопка «Закрыть»
+        return vc
     }
     func updateUIViewController(_ uiViewController: SFSafariViewController, context: Context) {}
 }
