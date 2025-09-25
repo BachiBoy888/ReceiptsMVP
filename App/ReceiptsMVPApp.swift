@@ -12,7 +12,7 @@ import SwiftData
 struct ReceiptsMVPApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainTabView()
         }
         .modelContainer(for: [Receipt.self]) // ✅ обязателен
     }
