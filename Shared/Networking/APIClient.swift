@@ -55,6 +55,7 @@ extension APIClient {
         var req = URLRequest(url: baseURL.appendingPathComponent("/api/statement/parse"))
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json", forHTTPHeaderField: "Accept") // ← добавили
         if let token = apiToken { req.setValue(token, forHTTPHeaderField: "x-api-token") }
 
         var body = Data()
@@ -77,6 +78,7 @@ extension APIClient {
                 } catch {
                     throw APIError.decoding(error)
                 }
+            case 401: throw APIError.server(code: 401, body: "Unauthorized")
             case 413: throw APIError.tooLarge413
             case 415: throw APIError.unsupportedType415
             case 422, 500: throw APIError.parseFailed

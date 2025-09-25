@@ -16,7 +16,8 @@ struct MainTabView: View {
 
             // вкладка выписок (из Statements)
             StatementsRootView()
-                .tabItem { Label("Мои выписки", systemImage: "doc.text.magnifyingglass") }
+                .tabItem { Label("Мои транзакции", systemImage: "doc.text.magnifyingglass") }
         }
     }
 }
+

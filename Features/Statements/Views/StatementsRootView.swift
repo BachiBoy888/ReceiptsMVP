@@ -20,24 +20,27 @@ struct StatementsRootView: View {
 
     var body: some View {
         NavigationStack {
+            HStack {
+                    Text("Мои транзакции")
+                        .font(.largeTitle).bold()
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.top)
             Group {
-                if let r = result {
-                    ResultView(
-                        response: r,
-                        onImportAgain: { isPicker = true },
-                        onOpenLast: { if let last = StatementStorage.load() { result = last } },
-                        onExportCSV: { exportCSV(r.transactions) }
-                    )
-                } else {
-                    EmptyStateView(onImport: { isPicker = true })
+                    if let r = result {
+                        ResultView(
+                            response: r,
+                            onImportAgain: { isPicker = true },
+                            onOpenLast: { if let last = StatementStorage.load() { result = last } },
+                            onExportCSV: { exportCSV(r.transactions) },
+                            isLoading: isLoading
+                        )
+                    } else {
+                        EmptyStateView(onImport: { isPicker = true })
+                    }
                 }
-            }
-            .navigationTitle("Мои чеки")
-            .toolbar {
-                if result != nil {
-                    Button("Импортировать снова") { isPicker = true }
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
             .fileImporter(
                 isPresented: $isPicker,
                 allowedContentTypes: {
@@ -51,7 +54,7 @@ struct StatementsRootView: View {
             ) { res in
                 handlePick(res)
             }
-            .overlay { if isLoading { ProgressView().controlSize(.large) } }
+
             .alert("Ошибка", isPresented: $isShowingError) {
                 Button("Ок", role: .cancel) {}
             } message: {
@@ -90,6 +93,13 @@ struct StatementsRootView: View {
                 } catch {
                     self.errorMessage = error.localizedDescription   // <— вот это
                     self.isShowingError = true
+                }
+                if let r = self.result {
+                    if let first = r.transactions.first {
+                        print("DEBUG ts(first) =>", DateFormatter.bishkekDateTime.string(from: first.ts))
+                    }
+                    print("DEBUG cumulativeClose(first) =>", r.dailySpending.first?.cumulativeClose as Any)
+                    print("DEBUG timeline points =>", r.timeline?.count ?? 0)
                 }
             }
         }
@@ -131,38 +141,96 @@ struct EmptyStateView: View {
             Text("Ещё нет данных — импортируйте .xls")
                 .font(.headline)
                 .multilineTextAlignment(.center)
-            Button("Импортировать .xls", action: onImport)
-                .buttonStyle(.borderedProminent)
+
+            Button(action: onImport) {
+                HStack(spacing: 8) {
+                    Image(systemName: "tray.and.arrow.down")
+                    Text("Загрузить выписку из MBank (.xls)")
+                        .fontWeight(.semibold)
+                }
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(.blue)
+                .foregroundStyle(.white)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(.top, 4)
         }
         .padding()
     }
 }
 
+
 // MARK: - ResultView
 
 struct ResultView: View {
+
+    @Environment(\.modelContext) private var modelContext
+
+    @StateObject private var matchStore = ReceiptMatchStore()
+    private let matcher = ReceiptMatcher()
+
+    @State private var receipts: [ReceiptTicket] = []
+    @State private var receiptByTicketId: [UUID: Receipt] = [:]
+
+    // Обёртка для навигации, если у Receipt нет явного Identifiable
+    struct ReceiptRef: Identifiable {
+        let id: String        // customId
+        let receipt: Receipt
+    }
+    @State private var pushReceipt: ReceiptRef?
+
     let response: StatementResponse
     let onImportAgain: () -> Void
     let onOpenLast: () -> Void
     let onExportCSV: () -> Void
+    let isLoading: Bool
 
-    @State private var metric: DisplayMetric = .debit // логичнее открыть “Списания” при таких данных
+    @State private var metric: DisplayMetric = .debit
+
+    // MARK: — Data refresh
+
+    private func reloadReceiptsAndIndex() {
+        do {
+            let loaded = try ReceiptStorageBridge.loadAllReceiptsWithMapping(context: modelContext)
+            self.receipts = loaded.tickets
+            self.receiptByTicketId = loaded.byTicketId
+            matcher.rebuildIndex(loaded.tickets)
+            #if DEBUG
+            print("DEBUG receipts reloaded:", loaded.tickets.count)
+            #endif
+        } catch {
+            self.receipts = []
+            self.receiptByTicketId = [:]
+            matcher.rebuildIndex([])
+            #if DEBUG
+            print("DEBUG receipts reload error:", error)
+            #endif
+        }
+    }
+
+    private func relinkAll() {
+        let txs = response.transactions
+        var newLinks = 0
+        for tx in txs {
+            let model = toTransaction(tx)
+            if matchStore.get(model.id) != nil { continue }
+            if let auto = matcher.match(model),
+               let _ = receiptByTicketId[auto.receiptId] {
+                matchStore.set(model.id, match: auto)
+                newLinks += 1
+            }
+        }
+        #if DEBUG
+        print("DEBUG relinkAll newLinks:", newLinks)
+        #endif
+    }
+
+    // MARK: — Body
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Чип периода
-                let chip = "\(DateFormatter.bishkekShort.string(from: response.period.from)) – \(DateFormatter.bishkekShort.string(from: response.period.to))"
-                Text(chip)
-                    .padding(.horizontal, 10).padding(.vertical, 6)
-                    .background(.ultraThinMaterial).clipShape(Capsule())
-
-                // Банк/валюта (если есть)
-                if let account = response.account {
-                    Text([account.bank, account.currency].compactMap{$0}.joined(separator: " — "))
-                        .foregroundStyle(.secondary)
-                }
-
+            VStack(alignment: .leading, spacing: 12) {
                 // Переключатель метрики
                 Picker("Метрика", selection: $metric) {
                     ForEach(DisplayMetric.allCases, id: \.self) { m in
@@ -171,55 +239,188 @@ struct ResultView: View {
                 }
                 .pickerStyle(.segmented)
 
-                // Итог по выбранной метрике
+                // Итог за период
                 let total = response.totals.value(for: metric)
-                Text("Итого: \(formatKGS(total))")
-                    .font(.title3).bold()
+                HStack {
+                    Text("Итого за период").font(.subheadline).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(formatKGS(total)).font(.system(size: 22, weight: .bold)).monospacedDigit()
+                }
 
-                // График (используем dailySpending; если сервер шлёт только amount, он трактуется как дебет)
-                SpendingChart(points: chartPointsFromServer(response, metric: metric), metric: metric)
-
-                // Список транзакций
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Транзакции").font(.headline)
-
-                    let filtered = filteredTransactions(response, metric: metric)
-
-                    ForEach(filtered) { tx in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(DateFormatter.bishkekShort.string(from: tx.date)).font(.subheadline)
-                                Text(tx.description).font(.body).lineLimit(3)
-                            }
-                            Spacer()
-                            let v = valueForUI(tx, metric: metric)
-                            Text(formatKGS(v))
-                                .foregroundStyle(metric == .debit ? .red : (v < 0 ? .red : .green))
+                // График
+                ZStack {
+                    if metric == .net {
+                        Chart(chartPointsCumulativeFromServer(response)) { p in
+                            LineMark(
+                                x: .value("День", p.date),
+                                y: .value("Кумулятив", p.value)
+                            )
                         }
-                        .padding(.vertical, 6)
-                        Divider()
+                        .chartXAxis { AxisMarks(values: .automatic(desiredCount: 6)) }
+                        .frame(height: 220)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .id("cum")
+                    } else {
+                        SpendingChartDailyBars(
+                            points: chartPointsFromServer(response, metric: metric),
+                            period: (start: response.period.from, end: response.period.to),
+                            title: metric.rawValue
+                        )
+                        .id("bars-\(metric.rawValue)")
                     }
 
-                    if filtered.isEmpty {
-                        Text("Нет операций для выбранной метрики.")
-                            .foregroundStyle(.secondary)
-                            .padding(.top, 8)
+                    if isLoading {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.black.opacity(0.08))
+                            .allowsHitTesting(false)
+                        ProgressView().controlSize(.large).tint(.blue)
                     }
                 }
 
-                HStack {
-                    Button("Импортировать снова", action: onImportAgain)
-                    Button("Открыть прошлую выписку", action: onOpenLast)
-                    Button("Экспорт CSV", action: onExportCSV)
-                }.buttonStyle(.bordered)
+                // Кнопка импорта
+                Button { onImportAgain() } label: {
+                    HStack(spacing: 8) { Image(systemName:"tray.and.arrow.down"); Text("Загрузить выписку из MBank (.xls)") }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .padding(.top, 8)
+
+                // Список транзакций (с группировкой)
+                VStack(alignment: .leading, spacing: 12) {
+                    let groups = dayGroups(response, metric: metric)
+
+                    if groups.isEmpty {
+                        Text("Нет операций для выбранной метрики.")
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+                    } else {
+                        ForEach(groups, id: \.day) { group in
+                            // Заголовок дня
+                            HStack {
+                                Spacer()
+                                Text(dayTitle(group.day))
+                                    .font(.caption).bold()
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 6)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Capsule())
+                                Spacer()
+                            }
+                            .padding(.vertical, 6)
+
+                            // Итого за день
+                            HStack {
+                                Text("Итого за день")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                let daySum = group.items.reduce(0.0) { $0 + valueForUI($1, metric: metric) }
+                                Text(formatKGS(daySum))
+                                    .font(.caption.bold())
+                                    .monospacedDigit()
+                                    .foregroundStyle(.orange)
+                            }
+                            .padding(.horizontal, 4)
+                            .padding(.bottom, 2)
+
+                            // Элементы дня
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(group.items) { tx in
+                                    let model = toTransaction(tx)
+                                    let hasMatch = matchStore.get(model.id) != nil
+
+                                    HStack(alignment: .center, spacing: 12) {
+                                        Rectangle()
+                                            .frame(width: 4, height: 32)
+                                            .foregroundStyle(hasMatch ? .green : .clear)
+                                            .opacity(hasMatch ? 1 : 0.15)
+
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text(DateFormatter.bishkekTime.string(from: tx.ts))
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+
+                                            HStack(spacing: 8) {
+                                                Text(tx.description)
+                                                    .font(.body)
+                                                    .lineLimit(2)
+
+                                                if hasMatch {
+                                                    MatchBadge()
+                                                }
+                                            }
+                                        }
+
+                                        Spacer()
+
+                                        let v = valueForUI(tx, metric: metric)
+                                        Text(formatKGS(v))
+                                            .font(.body.monospacedDigit())
+                                            .foregroundStyle(metric == .debit ? .yellow : (v < 0 ? .yellow : .green))
+
+                                        if hasMatch {
+                                            Image(systemName: "chevron.right")
+                                                .font(.footnote.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 6)
+                                    .background(
+                                        (hasMatch ? Color.green.opacity(0.15) : Color.clear)
+                                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    )
+                                    .contentShape(Rectangle())
+                                    .accessibilityAddTraits(hasMatch ? .isButton : [])
+                                    .onTapGesture {
+                                        guard hasMatch else { return }
+
+                                        if let match = matchStore.get(model.id),
+                                           let receipt = receiptByTicketId[match.receiptId] {
+                                            pushReceipt = ReceiptRef(id: receipt.customId, receipt: receipt)
+                                            return
+                                        }
+
+                                        if let auto = matcher.match(model),
+                                           let receipt = receiptByTicketId[auto.receiptId] {
+                                            matchStore.set(model.id, match: auto)
+                                            pushReceipt = ReceiptRef(id: receipt.customId, receipt: receipt)
+                                            return
+                                        }
+                                    }
+
+                                    Divider()
+                                        .opacity(tx.id == group.items.last?.id ? 0 : 1)
+                                }
+                            }
+                            .padding(.horizontal, 4)
+                        }
+                    }
+                }
             }
             .padding()
         }
-        .onAppear { debugFilterCounts() }
-        .onChange(of: metric) { _, _ in debugFilterCounts() }
+        // 🔻 Все модификаторы View — здесь, на одном уровне
+        .onAppear {
+            debugFilterCounts()
+            reloadReceiptsAndIndex()
+            relinkAll()
+        }
+        .onChange(of: metric) { _, _ in
+            debugFilterCounts()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .receiptsDidChange)) { _ in
+            reloadReceiptsAndIndex()
+            relinkAll()
+        }
+        .onChange(of: response.transactions.count) { _, _ in
+            relinkAll()
+        }
+        .sheet(item: $pushReceipt) { ref in
+            ReceiptDetailView(receipt: ref.receipt)
+        }
     }
 
-    // MARK: — Helpers
+    // MARK: — Helpers (как у тебя было)
 
     private func derivedCredit(_ tx: StatementResponse.Tx) -> Double {
         if let c = tx.credit { return max(0, c) }
@@ -246,10 +447,9 @@ struct ResultView: View {
             case .net:    return true
             }
         }
-        return arr.sorted { $0.date > $1.date }
+        return arr.sorted { $0.ts > $1.ts }
     }
     private func chartPointsFromServer(_ r: StatementResponse, metric: DisplayMetric) -> [ChartPoint] {
-        // Daily.value(for:) у нас уже трактует amount как debit при отсутствии полей
         let cal = Calendar(identifier: .gregorian)
         var map: [Date: Double] = [:]
         for d in r.dailySpending {
@@ -265,19 +465,62 @@ struct ResultView: View {
         }
         return out
     }
-    private func formatKGS(_ v: Double) -> String {
-        let f = NumberFormatter()
-        f.numberStyle = .currency; f.currencyCode = "KGS"; f.maximumFractionDigits = 2
-        return f.string(from: v as NSNumber) ?? "\(v) KGS"
+    private func chartPointsCumulativeFromServer(_ r: StatementResponse) -> [ChartPoint] {
+        let cal = Calendar(identifier: .gregorian)
+        let start = cal.startOfDay(for: r.period.from)
+        let end   = cal.startOfDay(for: r.period.to)
+
+        let hasCum = r.dailySpending.contains { $0.cumulativeClose != nil }
+
+        var byDay: [Date: StatementResponse.Daily] = [:]
+        for d in r.dailySpending {
+            byDay[cal.startOfDay(for: d.date)] = d
+        }
+
+        var out: [ChartPoint] = []
+        var cur = start
+        var running: Double = 0
+
+        while cur <= end {
+            if hasCum, let y = byDay[cur]?.cumulativeClose {
+                running = y
+            } else {
+                let dayNet = byDay[cur]?.value(for: .net) ?? 0
+                running += dayNet
+            }
+            out.append(.init(date: cur, value: running))
+            cur = cal.date(byAdding: .day, value: 1, to: cur)!
+        }
+        return out
     }
 
-    // Временный лог, чтобы сразу видеть, что фильтр сработал
     private func debugFilterCounts() {
         #if DEBUG
         let c = response.transactions.filter { derivedCredit($0) > 0 }.count
         let d = response.transactions.filter { derivedDebit($0)  > 0 }.count
         print("FILTER COUNTS → credit>0:", c, "debit>0:", d, "metric:", metric.rawValue)
         #endif
+    }
+
+    private func dayGroups(_ r: StatementResponse, metric: DisplayMetric) -> [(day: Date, items: [StatementResponse.Tx])] {
+        let arr = filteredTransactions(r, metric: metric)
+        let cal = Calendar(identifier: .gregorian)
+        let grouped = Dictionary(grouping: arr) { cal.startOfDay(for: $0.ts) }
+        let sortedDays = grouped.keys.sorted(by: >)
+        return sortedDays.map { day in
+            let items = grouped[day]!.sorted { $0.ts > $1.ts }
+            return (day: day, items: items)
+        }
+    }
+
+    private func dayTitle(_ day: Date) -> String {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        let d = cal.startOfDay(for: day)
+
+        if d == today { return "Сегодня" }
+        if d == cal.date(byAdding: .day, value: -1, to: today) { return "Вчера" }
+        return DateFormatter.bishkekLong.string(from: d)
     }
 }
 
@@ -287,22 +530,4 @@ struct ChartPoint: Identifiable {
     let date: Date
     let value: Double
     var id: Date { date }
-}
-
-struct SpendingChart: View {
-    let points: [ChartPoint]
-    let metric: DisplayMetric
-
-    var body: some View {
-        Chart(points) { p in
-            BarMark(
-                x: .value("Дата", p.date),
-                y: .value(metric.rawValue, p.value)
-            )
-        }
-        .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 6))
-        }
-        .frame(height: 220)
-    }
 }

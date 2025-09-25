@@ -7,58 +7,70 @@
 
 import Foundation
 
-// Форматтер для отображения дат в Бишкеке
-extension DateFormatter {
-    static let bishkekShort: DateFormatter = {
-        let f = DateFormatter()
-        f.timeZone = TimeZone(identifier: "Asia/Bishkek")
-        f.locale = Locale(identifier: "ru_RU")
-        // Локализованный шаблон вроде "1 сент. 2025"
-        f.setLocalizedDateFormatFromTemplate("d MMM yyyy")
-        return f
-    }()
-}
-
-// Универсальный декодер для наших ответов сервера
+// 1) Декодер: ISO8601 с/без миллисекунд + "yyyy-MM-dd"
 extension JSONDecoder {
     static var statement: JSONDecoder = {
         let d = JSONDecoder()
-        d.dateDecodingStrategy = .custom { decoder in
-            let s = try decoder.singleValueContainer().decode(String.self)
 
-            // 1) ISO8601 с миллисекундами
-            let iso = ISO8601DateFormatter()
-            iso.timeZone = TimeZone(identifier: "Asia/Bishkek")
-            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            if let d1 = iso.date(from: s) { return d1 }
+        let isoMs: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return f
+        }()
+        let iso: ISO8601DateFormatter = {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            return f
+        }()
+        let ymd: DateFormatter = {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone(identifier: "Asia/Bishkek")
+            f.dateFormat = "yyyy-MM-dd"
+            return f
+        }()
 
-            // 2) ISO8601 без миллисекунд
-            iso.formatOptions = [.withInternetDateTime]
-            if let d2 = iso.date(from: s) { return d2 }
-
-            // 3) Дата без времени "yyyy-MM-dd" (то, что сейчас отдаёт сервер)
-            let df = DateFormatter()
-            df.timeZone = TimeZone(identifier: "Asia/Bishkek")
-            df.locale = Locale(identifier: "en_US_POSIX")
-            df.dateFormat = "yyyy-MM-dd"
-            if let d3 = df.date(from: s) { return d3 }
-
-            throw DecodingError.dataCorrupted(.init(
-                codingPath: decoder.codingPath,
-                debugDescription: "Unsupported date format: \(s)"
-            ))
+        d.dateDecodingStrategy = .custom { dec in
+            let s = try dec.singleValueContainer().decode(String.self)
+            if let dt = isoMs.date(from: s) { return dt }
+            if let dt = iso.date(from: s)   { return dt }
+            if let dt = ymd.date(from: s)   { return dt }
+            throw DecodingError.dataCorruptedError(in: try dec.singleValueContainer(),
+                debugDescription: "Unsupported date format: \(s)")
         }
         return d
     }()
 }
 
-// Универсальный энкодер для сохранения в кэш (Application Support)
+// 2) Энкодер (если кэшируешь ответы)
 extension JSONEncoder {
     static var statement: JSONEncoder = {
         let e = JSONEncoder()
-        // используем стратегию из ISO8601+TZ.swift
-        e.dateEncodingStrategy = .iso8601withMillisAndTZ
+        e.dateEncodingStrategy = .iso8601WithMillisAndTZ
         e.outputFormatting = [.withoutEscapingSlashes]
         return e
+    }()
+}
+
+extension JSONEncoder.DateEncodingStrategy {
+    static var iso8601WithMillisAndTZ: JSONEncoder.DateEncodingStrategy {
+        .custom { date, encoder in
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let s = f.string(from: date)
+            var c = encoder.singleValueContainer()
+            try c.encode(s)
+        }
+    }
+}
+
+// 3) Форматтер для экранов
+extension DateFormatter {
+    static let bishkekDateTime: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ru_RU")
+        f.timeZone = TimeZone(identifier: "Asia/Bishkek")
+        f.dateFormat = "dd.MM.yyyy HH:mm"
+        return f
     }()
 }

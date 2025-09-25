@@ -42,8 +42,11 @@ final class ReceiptStore {
                 existing.photoPath = path
                 changed = true
             }
-
-            if changed { try context.save() }
+            // ... внутри saveOrUpdate(parsed:sourceURL:photo:)
+            if changed {
+                try context.save()
+                NotificationCenter.default.post(name: .receiptsDidChange, object: nil)
+            }
             return (existing, false)
         }
 
@@ -68,8 +71,10 @@ final class ReceiptStore {
             itemsJSON: itemsJSON,
             photoPath: photoPath
         )
+        // ... при создании нового:
         context.insert(model)
         try context.save()
+        NotificationCenter.default.post(name: .receiptsDidChange, object: nil)
         return (model, true)
     }
 
@@ -99,6 +104,7 @@ final class ReceiptStore {
         {
             receipt.sourceURL = url.absoluteString
             try context.save()             // ← сохраняем в SwiftData, НЕ в CIContext
+            NotificationCenter.default.post(name: .receiptsDidChange, object: nil)
             return url
         }
         return nil
