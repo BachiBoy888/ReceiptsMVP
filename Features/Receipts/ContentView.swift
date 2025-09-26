@@ -42,8 +42,7 @@ struct ContentView: View {
     @State private var errorMessage: String?
     @State private var pendingSelection: ReceiptSelection?
     @State private var lastURL: URL?
-    @State private var showFeedback = false    // ⬅️ добавь это
-    
+    @State private var showFeedback = false
 
     let fetcher = ReceiptFetcher()
 
@@ -80,7 +79,7 @@ struct ContentView: View {
                 Spacer()
                 Button {
                     // ✅ Amplitude: шторка обратной связи открыта
-                       AnalyticsService.shared.track("feedback_sheet_opened")
+                    AnalyticsService.shared.track("feedback_sheet_opened")
                     showFeedback = true
                 } label: {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -229,8 +228,8 @@ struct ContentView: View {
                                     Spacer()
                                 }
                                 .padding(.vertical, 6)
-                                
-                                /// ⬇️ ДОБАВЬ ЭТО: "Итого за день" по чекам
+
+                                // Итого за день
                                 HStack {
                                     Text("Итого за день")
                                         .font(.caption)
@@ -277,13 +276,11 @@ struct ContentView: View {
                                             .contentShape(Rectangle())
                                             .accessibilityAddTraits(.isButton)
                                         }
-                                        .buttonStyle(PressableRowStyle())    // ← фон-карточка + анимация нажатия
-                                        .padding(.bottom, 8)                 // вместо Divider — воздух между карточками
+                                        .buttonStyle(PressableRowStyle())
+                                        .padding(.bottom, 8)
 
-
-                                        // Разделитель между элементами дня (без последнего)
                                         if r.id != group.items.last?.id {
-                                 
+                                            // разделитель — сейчас опущен
                                         }
                                     }
                                 }
@@ -327,6 +324,8 @@ struct ContentView: View {
                 message: { Text(errorMessage ?? "") }
             )
             .onAppear {
+                // ✅ Amplitude: экран Home
+                AnalyticsService.shared.trackScreen("Home")
                 if !hasSeenOnboarding {
                     showOnboarding = true
                 }
@@ -365,14 +364,14 @@ struct ContentView: View {
                 "date": saved.date.ISO8601Format(),
                 "merchant": saved.merchant,
                 "total": saved.total.doubleValue,
-                "source": "qr" // или "camera" / "photo_import" если различаешь
+                "source": "qr"
             ])
 
         } catch {
             // ✅ (опционально) событие ошибки сканирования
             AnalyticsService.shared.track("receipt_scan_failed", props: [
                 "reason": error.localizedDescription,
-                "url_host": url.host()
+                "url_host": url.host ?? ""
             ])
             errorMessage = "Не удалось получить чек: \(error.localizedDescription)"
         }
@@ -380,16 +379,10 @@ struct ContentView: View {
 
     private func groupedReceiptsByDay() -> [(day: Date, items: [Receipt])] {
         let cal = Calendar(identifier: .gregorian)
-
-        // сгруппировать по началу дня
         let grouped = Dictionary(grouping: receipts) { r in
             cal.startOfDay(for: r.date)
         }
-
-        // дни по убыванию
         let days = grouped.keys.sorted(by: >)
-
-        // внутри дня — по времени по убыванию
         return days.map { day in
             let items = (grouped[day] ?? []).sorted(by: { $0.date > $1.date })
             return (day: day, items: items)
@@ -405,9 +398,7 @@ struct ContentView: View {
         if d == cal.date(byAdding: .day, value: -1, to: today) { return "Вчера" }
         return DateFormatter.bishkekLong.string(from: d)
     }
-    
-    
-    
+
     private func venueName(for r: Receipt) -> String {
         if let address = r.address, !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             let first = address.split(separator: ",", maxSplits: 1, omittingEmptySubsequences: true).first
@@ -507,10 +498,10 @@ struct FeedbackSheetView: View {
 
             Button {
                 // ✅ Amplitude: клик «написать разработчикам»
-                    AnalyticsService.shared.track(AnalyticsEvent.devContactLinkClicked, props: [
-                        "channel": "whatsapp",
-                        "pre_filled": true
-                    ])
+                AnalyticsService.shared.track(AnalyticsEvent.devContactLinkClicked, props: [
+                    "channel": "whatsapp",
+                    "pre_filled": true
+                ])
                 openURL(waURL)
             } label: {
                 Text("Написать разработчикам")
@@ -525,10 +516,10 @@ struct FeedbackSheetView: View {
             // ⬇️ новая кнопка «Инструкция»
             Button {
                 // ✅ Amplitude: повторное открытие инструкции
-                    AnalyticsService.shared.track(AnalyticsEvent.helpInstructionOpened, props: [
-                        "entry_point": "feedback_sheet",
-                        "repeat": true
-                    ])
+                AnalyticsService.shared.track(AnalyticsEvent.helpInstructionOpened, props: [
+                    "entry_point": "feedback_sheet",
+                    "repeat": true
+                ])
                 dismiss()               // закрыть шторку
                 onInstruction()         // открыть онбординг
             } label: {
