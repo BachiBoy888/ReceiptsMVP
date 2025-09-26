@@ -47,6 +47,7 @@
 		27B101C22E85C7C5005B88D6 /* ReceiptStorageBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101C12E85C7C4005B88D6 /* ReceiptStorageBridge.swift */; };
 		27B101C42E85C7EB005B88D6 /* MatchBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101C32E85C7EA005B88D6 /* MatchBadge.swift */; };
 		27B101C72E85CE85005B88D6 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101C62E85CE84005B88D6 /* Notifications.swift */; };
+		27B101CB2E86585C005B88D6 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101CA2E86585B005B88D6 /* OnboardingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +91,7 @@
 		27B101C12E85C7C4005B88D6 /* ReceiptStorageBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptStorageBridge.swift; sourceTree = "<group>"; };
 		27B101C32E85C7EA005B88D6 /* MatchBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchBadge.swift; sourceTree = "<group>"; };
 		27B101C62E85CE84005B88D6 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
+		27B101CA2E86585B005B88D6 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -250,6 +252,7 @@
 		27B101902E854778005B88D6 /* Receipts */ = {
 			isa = PBXGroup;
 			children = (
+				27B101CA2E86585B005B88D6 /* OnboardingView.swift */,
 				27B101472E851246005B88D6 /* ContentView.swift */,
 				27B101482E851246005B88D6 /* Extensions.swift */,
 				27B1014A2E851246005B88D6 /* Log.swift */,
@@ -399,6 +402,7 @@
 				27B1017D2E853764005B88D6 /* StatementStorage.swift in Sources */,
 				27B101592E851246005B88D6 /* MerchantHistoryView.swift in Sources */,
 				27B101A72E859449005B88D6 /* SpendingChartDailyBars.swift in Sources */,
+				27B101CB2E86585C005B88D6 /* OnboardingView.swift in Sources */,
 				27B1018D2E85422C005B88D6 /* APIClient.swift in Sources */,
 				27B1015A2E851246005B88D6 /* QRCodeView.swift in Sources */,
 				27B1015B2E851246005B88D6 /* QRScannerView.swift in Sources */,

@@ -34,13 +34,16 @@ struct ContentView: View {
         case lastTwoMonths = "за 30 дней"
         var id: Self { self }
     }
-
+    @AppStorage("hasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var showOnboarding = false
     @State private var selectedPeriod: SpendPeriod = .lastTwoMonths
     @State private var isScanning = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var pendingSelection: ReceiptSelection?
     @State private var lastURL: URL?
+    @State private var showFeedback = false    // ⬅️ добавь это
+    
 
     let fetcher = ReceiptFetcher()
 
@@ -75,6 +78,13 @@ struct ContentView: View {
                 Text("Мои чеки")
                     .font(.largeTitle).bold()
                 Spacer()
+                Button {
+                    showFeedback = true
+                } label: {
+                    Image(systemName: "bubble.left.and.bubble.right.fill")
+                        .font(.title3.weight(.semibold))
+                }
+                .accessibilityLabel("Оставить обратную связь")
             }
             .padding(.horizontal)
             .padding(.top)
@@ -314,6 +324,22 @@ struct ContentView: View {
                 actions: { Button("OK") { errorMessage = nil } },
                 message: { Text(errorMessage ?? "") }
             )
+            .onAppear {
+                if !hasSeenOnboarding {
+                    showOnboarding = true
+                }
+            }
+            .fullScreenCover(isPresented: $showOnboarding) {
+                OnboardingView {
+                    hasSeenOnboarding = true
+                    showOnboarding = false
+                }
+            }
+            .sheet(isPresented: $showFeedback) {
+                FeedbackSheetView(onInstruction: {
+                    showOnboarding = true
+                })
+            }
         }
     }
 
@@ -443,3 +469,57 @@ struct ContentView: View {
 let twoFrac: FloatingPointFormatStyle<Double> = .number.precision(.fractionLength(2))
 private let kgsFmt: FloatingPointFormatStyle<Double>.Currency =
     .currency(code: "KGS").precision(.fractionLength(2))
+
+
+struct FeedbackSheetView: View {
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dismiss) private var dismiss
+
+    // новый колбэк для запуска онбординга
+    var onInstruction: () -> Void = {}
+
+    private let waURL = URL(string: "https://wa.me/996220447446?text=%D0%9F%D1%80%D0%B8%D0%B2%D0%B5%D1%82!%20%F0%9F%91%8B%20%D1%8F%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D1%83%D1%81%D1%8C%20%D0%B2%D0%B0%D1%88%D0%B8%D0%BC%20%D0%BF%D1%80%D0%B8%D0%BB%D0%BE%D0%B6%D0%B5%D0%BD%D0%B8%D0%B5%D0%BC%20%22%D0%9C%D0%BE%D0%B8%20%D1%87%D0%B5%D0%BA%D0%B8%22")!
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Text("Спасибо, что установили наше приложение.")
+                .font(.title3).bold()
+                .multilineTextAlignment(.center)
+
+            Text("Мы хотим, чтобы приложение становилось лучше, поэтому нам важно получать от вас обратную связь.")
+                .multilineTextAlignment(.center)
+
+            Button {
+                openURL(waURL)
+            } label: {
+                Text("Написать разработчикам")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(.green.opacity(0.9))
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .accessibilityLabel("Написать в WhatsApp разработчикам")
+
+            // ⬇️ новая кнопка «Инструкция»
+            Button {
+                dismiss()               // закрыть шторку
+                onInstruction()         // открыть онбординг
+            } label: {
+                Text("Инструкция")
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(.secondary.opacity(0.4), lineWidth: 1)
+                    )
+            }
+            .accessibilityLabel("Открыть инструкцию")
+
+            Spacer(minLength: 0)
+        }
+        .padding()
+        .presentationDetents([.fraction(0.35), .medium])
+        .presentationDragIndicator(.visible)
+    }
+}
