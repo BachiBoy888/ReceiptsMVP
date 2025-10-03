@@ -79,6 +79,8 @@ struct ContentView: View {
                     .font(.largeTitle).bold()
                 Spacer()
                 Button {
+                    // ✅ Amplitude: шторка обратной связи открыта
+                       AnalyticsService.shared.track("feedback_sheet_opened")
                     showFeedback = true
                 } label: {
                     Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -357,7 +359,21 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 pendingSelection = ReceiptSelection(receipt: saved)
             }
+
+            // ✅ Amplitude: чек успешно отсканирован
+            AnalyticsService.shared.track(AnalyticsEvent.receiptScanned, props: [
+                "date": saved.date.ISO8601Format(),
+                "merchant": saved.merchant,
+                "total": saved.total.doubleValue,
+                "source": "qr" // или "camera" / "photo_import" если различаешь
+            ])
+
         } catch {
+            // ✅ (опционально) событие ошибки сканирования
+            AnalyticsService.shared.track("receipt_scan_failed", props: [
+                "reason": error.localizedDescription,
+                "url_host": url.host()
+            ])
             errorMessage = "Не удалось получить чек: \(error.localizedDescription)"
         }
     }
@@ -490,6 +506,11 @@ struct FeedbackSheetView: View {
                 .multilineTextAlignment(.center)
 
             Button {
+                // ✅ Amplitude: клик «написать разработчикам»
+                    AnalyticsService.shared.track(AnalyticsEvent.devContactLinkClicked, props: [
+                        "channel": "whatsapp",
+                        "pre_filled": true
+                    ])
                 openURL(waURL)
             } label: {
                 Text("Написать разработчикам")
@@ -503,6 +524,11 @@ struct FeedbackSheetView: View {
 
             // ⬇️ новая кнопка «Инструкция»
             Button {
+                // ✅ Amplitude: повторное открытие инструкции
+                    AnalyticsService.shared.track(AnalyticsEvent.helpInstructionOpened, props: [
+                        "entry_point": "feedback_sheet",
+                        "repeat": true
+                    ])
                 dismiss()               // закрыть шторку
                 onInstruction()         // открыть онбординг
             } label: {

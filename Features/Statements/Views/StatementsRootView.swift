@@ -28,19 +28,43 @@ struct StatementsRootView: View {
                 .padding(.horizontal)
                 .padding(.top)
             Group {
-                    if let r = result {
-                        ResultView(
-                            response: r,
-                            onImportAgain: { isPicker = true },
-                            onOpenLast: { if let last = StatementStorage.load() { result = last } },
-                            onExportCSV: { exportCSV(r.transactions) },
-                            isLoading: isLoading
-                        )
-                    } else {
-                        EmptyStateView(onImport: { isPicker = true })
-                    }
+                if let r = result {
+                    ResultView(
+                        response: r,
+                        onImportAgain: {
+                            // ✅ Amplitude: начал импорт выписки (открываем файл-пикер)
+                            AnalyticsService.shared.track("bank_statement_import_started")
+                            isPicker = true
+                        },
+                        onOpenLast: {
+                            if let last = StatementStorage.load() { result = last }
+                            // ✅ Amplitude: открыт последний результат
+                            AnalyticsService.shared.track("bank_statement_open_last")
+                        },
+                        onExportCSV: {
+                            // ✅ Amplitude: экспорт CSV
+                            AnalyticsService.shared.track("bank_statement_export_csv", props: [
+                                "count": r.transactions.count
+                            ])
+                            exportCSV(r.transactions)
+                        },
+                        isLoading: isLoading
+                    )
+                } else {
+                    EmptyStateView(onImport: {
+                        // ✅ Amplitude: начал импорт из пустого состояния
+                        AnalyticsService.shared.track("bank_statement_import_started", props: [
+                            "from": "empty_state"
+                        ])
+                        isPicker = true
+                    })
+                }
+
                 }
             .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                AnalyticsService.shared.trackScreen("Statements/Root")
+            }
             .fileImporter(
                 isPresented: $isPicker,
                 allowedContentTypes: {
@@ -70,11 +94,22 @@ struct StatementsRootView: View {
             self.errorMessage = "Не удалось выбрать файл"
             self.isShowingError = true
 
+            // ✅ Amplitude: не удалось открыть пикер/выбрать файл
+            AnalyticsService.shared.track("bank_statement_file_pick_failed", props: [
+                "reason": err.localizedDescription
+            ])
+
         case .success(let urls):
             guard let url = urls.first else { return }
             guard let data = readPickedFileData(from: url) else {
                 self.errorMessage = "Не удалось прочитать файл. Убедитесь, что выбран .xls из MBank."
                 self.isShowingError = true
+
+                // ✅ Amplitude: не удалось прочитать файл
+                AnalyticsService.shared.track("bank_statement_file_read_failed", props: [
+                    "filename": url.lastPathComponent,
+                    "ext": url.pathExtension.lowercased()
+                ])
                 return
             }
             Task {
@@ -82,18 +117,42 @@ struct StatementsRootView: View {
                 defer { self.isLoading = false }
                 do {
                     let r = try await APIClient.shared.uploadXLS(data: data, filename: url.lastPathComponent)
-#if DEBUG
+                    #if DEBUG
                     DebugLog.response(r)
-#endif
+                    #endif
                     self.result = r
                     StatementStorage.save(r)
+
+                    // ✅ Amplitude: выписка загружена успешно
+                    AnalyticsService.shared.track(AnalyticsEvent.bankStatementUploaded, props: [
+                        "filename": url.lastPathComponent,
+                        "file_type": url.pathExtension.lowercased(),
+                        "bank": "MBank",
+                        "transactions_count": r.transactions.count,
+                        "period_from": ISO8601DateFormatter().string(from: r.period.from),
+                        "period_to": ISO8601DateFormatter().string(from: r.period.to)
+                    ])
+
                 } catch let e as APIError {
                     self.errorMessage = e.errorDescription ?? "Неизвестная ошибка."
                     self.isShowingError = true
+
+                    // ✅ Amplitude: ошибка API при загрузке
+                    AnalyticsService.shared.track("bank_statement_upload_failed", props: [
+                        "filename": url.lastPathComponent,
+                        "reason": e.errorDescription ?? "unknown_api_error"
+                    ])
                 } catch {
-                    self.errorMessage = error.localizedDescription   // <— вот это
+                    self.errorMessage = error.localizedDescription
                     self.isShowingError = true
+
+                    // ✅ Amplitude: иная ошибка при загрузке
+                    AnalyticsService.shared.track("bank_statement_upload_failed", props: [
+                        "filename": url.lastPathComponent,
+                        "reason": error.localizedDescription
+                    ])
                 }
+
                 if let r = self.result {
                     if let first = r.transactions.first {
                         print("DEBUG ts(first) =>", DateFormatter.bishkekDateTime.string(from: first.ts))
@@ -104,6 +163,7 @@ struct StatementsRootView: View {
             }
         }
     }
+
 
     private func exportCSV(_ txs: [StatementResponse.Tx]) {
         let data = CSVBuilder.transactionsCSV(txs)
@@ -376,6 +436,12 @@ struct ResultView: View {
 
                                         if let match = matchStore.get(model.id),
                                            let receipt = receiptByTicketId[match.receiptId] {
+                                            // ✅ Amplitude: открыл транзакцию с чеком (уже был матч)
+                                            AnalyticsService.shared.track("statement_tx_opened_with_receipt", props: [
+                                                "tx_id": model.id,
+                                                "amount": valueForUI(tx, metric: metric),
+                                                "matched_via": "existing"
+                                            ])
                                             pushReceipt = ReceiptRef(id: receipt.customId, receipt: receipt)
                                             return
                                         }
@@ -383,10 +449,17 @@ struct ResultView: View {
                                         if let auto = matcher.match(model),
                                            let receipt = receiptByTicketId[auto.receiptId] {
                                             matchStore.set(model.id, match: auto)
+                                            // ✅ Amplitude: открыл транзакцию с чеком (автоматически сматчено)
+                                            AnalyticsService.shared.track("statement_tx_opened_with_receipt", props: [
+                                                "tx_id": model.id,
+                                                "amount": valueForUI(tx, metric: metric),
+                                                "matched_via": "auto"
+                                            ])
                                             pushReceipt = ReceiptRef(id: receipt.customId, receipt: receipt)
                                             return
                                         }
                                     }
+
 
                                     Divider()
                                         .opacity(tx.id == group.items.last?.id ? 0 : 1)
@@ -405,8 +478,12 @@ struct ResultView: View {
             reloadReceiptsAndIndex()
             relinkAll()
         }
-        .onChange(of: metric) { _, _ in
+        .onChange(of: metric) { _, newValue in
             debugFilterCounts()
+            // ✅ Amplitude: пользователь сменил метрику
+            AnalyticsService.shared.track("statements_metric_changed", props: [
+                "metric": newValue.rawValue
+            ])
         }
         .onReceive(NotificationCenter.default.publisher(for: .receiptsDidChange)) { _ in
             reloadReceiptsAndIndex()
