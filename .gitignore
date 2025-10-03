@@ -1,0 +1,13 @@
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+
+# Xcode workspace shared data we don't need
+ReceiptsMVP.xcodeproj/xcshareddata/
+
+# Build artifacts
+DerivedData/
+build/
+
+# SwiftPM local data
+.swiftpm/
