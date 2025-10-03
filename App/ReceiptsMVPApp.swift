@@ -10,10 +10,23 @@ import SwiftData
 
 @main
 struct ReceiptsMVPApp: App {
+
+    init() {
+        _ = AnalyticsService.shared
+        AnalyticsService.shared.track("debug_app_launched", props: [
+            "ts": ISO8601DateFormatter().string(from: Date()),
+            "env": "dev"
+        ])
+// ← инициализация Amplitude однажды при запуске
+    }
+
     var body: some Scene {
         WindowGroup {
             MainTabView()
+                .onAppear {
+                    AnalyticsService.shared.trackScreen("MainTabView")
+                }
         }
-        .modelContainer(for: [Receipt.self]) // ✅ обязателен
+        .modelContainer(for: [Receipt.self])
     }
 }

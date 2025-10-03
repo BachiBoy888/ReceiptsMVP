@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		278081C52E7A7AAE00CD0907 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 278081C42E7A7AAE00CD0907 /* SwiftSoup */; };
+		279324D52E8F8BDA00BC9320 /* AmplitudeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 279324D42E8F8BDA00BC9320 /* AmplitudeSwift */; };
+		279324DC2E8F8E1D00BC9320 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279324DB2E8F8E1C00BC9320 /* AnalyticsService.swift */; };
 		27B101562E851246005B88D6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101472E851246005B88D6 /* ContentView.swift */; };
 		27B101572E851246005B88D6 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101482E851246005B88D6 /* Extensions.swift */; };
 		27B101582E851246005B88D6 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B1014A2E851246005B88D6 /* Log.swift */; };
@@ -47,10 +49,13 @@
 		27B101C22E85C7C5005B88D6 /* ReceiptStorageBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101C12E85C7C4005B88D6 /* ReceiptStorageBridge.swift */; };
 		27B101C42E85C7EB005B88D6 /* MatchBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101C32E85C7EA005B88D6 /* MatchBadge.swift */; };
 		27B101C72E85CE85005B88D6 /* Notifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101C62E85CE84005B88D6 /* Notifications.swift */; };
+		27B101CB2E86585C005B88D6 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101CA2E86585B005B88D6 /* OnboardingView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		278081CC2E7AAC5000CD0907 /* ReceiptsMVP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReceiptsMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		279324DB2E8F8E1C00BC9320 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
+		279324E22E8F9F8500BC9320 /* Info.plist */ = {isa = PBXFileReference; explicitFileType = text.plist.info; path = Info.plist; sourceTree = "<group>"; };
 		27B101472E851246005B88D6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		27B101482E851246005B88D6 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		27B1014A2E851246005B88D6 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
@@ -90,24 +95,12 @@
 		27B101C12E85C7C4005B88D6 /* ReceiptStorageBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptStorageBridge.swift; sourceTree = "<group>"; };
 		27B101C32E85C7EA005B88D6 /* MatchBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatchBadge.swift; sourceTree = "<group>"; };
 		27B101C62E85CE84005B88D6 /* Notifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Notifications.swift; sourceTree = "<group>"; };
+		27B101CA2E86585B005B88D6 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
-
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		278081B82E7A73C300CD0907 /* Exceptions for "ReceiptsMVP" folder in "ReceiptsMVP" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 278F15F32E7931DC008A4D1C /* ReceiptsMVP */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		278F15F62E7931DC008A4D1C /* ReceiptsMVP */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				278081B82E7A73C300CD0907 /* Exceptions for "ReceiptsMVP" folder in "ReceiptsMVP" target */,
-			);
 			path = ReceiptsMVP;
 			sourceTree = "<group>";
 		};
@@ -118,6 +111,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				279324D52E8F8BDA00BC9320 /* AmplitudeSwift in Frameworks */,
 				278081C52E7A7AAE00CD0907 /* SwiftSoup in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -128,12 +122,21 @@
 		278F15EB2E7931DC008A4D1C = {
 			isa = PBXGroup;
 			children = (
+				279324E22E8F9F8500BC9320 /* Info.plist */,
 				27B101862E853E16005B88D6 /* App */,
 				27B101852E853E0E005B88D6 /* Shared */,
 				27B101642E851363005B88D6 /* Features */,
 				278081CC2E7AAC5000CD0907 /* ReceiptsMVP.app */,
 				278F15F62E7931DC008A4D1C /* ReceiptsMVP */,
 			);
+			sourceTree = "<group>";
+		};
+		279324DA2E8F8E1000BC9320 /* Analytics */ = {
+			isa = PBXGroup;
+			children = (
+				279324DB2E8F8E1C00BC9320 /* AnalyticsService.swift */,
+			);
+			path = Analytics;
 			sourceTree = "<group>";
 		};
 		27B101642E851363005B88D6 /* Features */ = {
@@ -185,6 +188,7 @@
 		27B101852E853E0E005B88D6 /* Shared */ = {
 			isa = PBXGroup;
 			children = (
+				279324DA2E8F8E1000BC9320 /* Analytics */,
 				27B101C52E85CE7A005B88D6 /* Utils */,
 				27B101BE2E85C7A0005B88D6 /* Adapters */,
 				27B101AB2E85C083005B88D6 /* Matching */,
@@ -250,6 +254,7 @@
 		27B101902E854778005B88D6 /* Receipts */ = {
 			isa = PBXGroup;
 			children = (
+				27B101CA2E86585B005B88D6 /* OnboardingView.swift */,
 				27B101472E851246005B88D6 /* ContentView.swift */,
 				27B101482E851246005B88D6 /* Extensions.swift */,
 				27B1014A2E851246005B88D6 /* Log.swift */,
@@ -329,6 +334,7 @@
 			name = ReceiptsMVP;
 			packageProductDependencies = (
 				278081C42E7A7AAE00CD0907 /* SwiftSoup */,
+				279324D42E8F8BDA00BC9320 /* AmplitudeSwift */,
 			);
 			productName = ReceiptsMVP;
 			productReference = 278081CC2E7AAC5000CD0907 /* ReceiptsMVP.app */;
@@ -360,6 +366,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				278081C32E7A7AAE00CD0907 /* XCRemoteSwiftPackageReference "SwiftSoup" */,
+				279324D32E8F8BDA00BC9320 /* XCRemoteSwiftPackageReference "Amplitude-Swift" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 278F15EB2E7931DC008A4D1C;
@@ -399,8 +406,10 @@
 				27B1017D2E853764005B88D6 /* StatementStorage.swift in Sources */,
 				27B101592E851246005B88D6 /* MerchantHistoryView.swift in Sources */,
 				27B101A72E859449005B88D6 /* SpendingChartDailyBars.swift in Sources */,
+				27B101CB2E86585C005B88D6 /* OnboardingView.swift in Sources */,
 				27B1018D2E85422C005B88D6 /* APIClient.swift in Sources */,
 				27B1015A2E851246005B88D6 /* QRCodeView.swift in Sources */,
+				279324DC2E8F8E1D00BC9320 /* AnalyticsService.swift in Sources */,
 				27B1015B2E851246005B88D6 /* QRScannerView.swift in Sources */,
 				27B101C02E85C7A9005B88D6 /* TxAdapter.swift in Sources */,
 				27B101B32E85C0E5005B88D6 /* TransactionRow.swift in Sources */,
@@ -483,6 +492,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_AMPLITUDE_API_KEY = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -540,6 +550,7 @@
 				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
+				INFOPLIST_KEY_AMPLITUDE_API_KEY = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
@@ -560,16 +571,18 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = PLGY9T42DM;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = ReceiptsMVP/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Мои чеки";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Мои чеки+";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Нужна камера для сканирования QR на чеках";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к галерее для выбора QR с чека";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -583,7 +596,8 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
+				asd = "";
 			};
 			name = Debug;
 		};
@@ -597,16 +611,18 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = PLGY9T42DM;
 				ENABLE_PREVIEWS = YES;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = ReceiptsMVP/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = "Мои чеки";
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Мои чеки+";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Нужна камера для сканирования QR на чеках";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Нужен доступ к галерее для выбора QR с чека";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -620,7 +636,8 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
+				asd = "";
 			};
 			name = Release;
 		};
@@ -656,6 +673,14 @@
 				minimumVersion = 2.11.1;
 			};
 		};
+		279324D32E8F8BDA00BC9320 /* XCRemoteSwiftPackageReference "Amplitude-Swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/amplitude/Amplitude-Swift";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -663,6 +688,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 278081C32E7A7AAE00CD0907 /* XCRemoteSwiftPackageReference "SwiftSoup" */;
 			productName = SwiftSoup;
+		};
+		279324D42E8F8BDA00BC9320 /* AmplitudeSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 279324D32E8F8BDA00BC9320 /* XCRemoteSwiftPackageReference "Amplitude-Swift" */;
+			productName = AmplitudeSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
