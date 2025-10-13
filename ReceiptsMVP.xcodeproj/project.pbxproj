@@ -10,6 +10,7 @@
 		278081C52E7A7AAE00CD0907 /* SwiftSoup in Frameworks */ = {isa = PBXBuildFile; productRef = 278081C42E7A7AAE00CD0907 /* SwiftSoup */; };
 		279324D52E8F8BDA00BC9320 /* AmplitudeSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 279324D42E8F8BDA00BC9320 /* AmplitudeSwift */; };
 		279324DC2E8F8E1D00BC9320 /* AnalyticsService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 279324DB2E8F8E1C00BC9320 /* AnalyticsService.swift */; };
+		27AB619E2E94BC50008E23FC /* SalykAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27AB619D2E94BC4B008E23FC /* SalykAPI.swift */; };
 		27B101562E851246005B88D6 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101472E851246005B88D6 /* ContentView.swift */; };
 		27B101572E851246005B88D6 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B101482E851246005B88D6 /* Extensions.swift */; };
 		27B101582E851246005B88D6 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27B1014A2E851246005B88D6 /* Log.swift */; };
@@ -56,6 +57,7 @@
 		278081CC2E7AAC5000CD0907 /* ReceiptsMVP.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ReceiptsMVP.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		279324DB2E8F8E1C00BC9320 /* AnalyticsService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsService.swift; sourceTree = "<group>"; };
 		279324E22E8F9F8500BC9320 /* Info.plist */ = {isa = PBXFileReference; explicitFileType = text.plist.info; path = Info.plist; sourceTree = "<group>"; };
+		27AB619D2E94BC4B008E23FC /* SalykAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SalykAPI.swift; sourceTree = "<group>"; };
 		27B101472E851246005B88D6 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		27B101482E851246005B88D6 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		27B1014A2E851246005B88D6 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
@@ -214,6 +216,7 @@
 		27B101872E853E1C005B88D6 /* Networking */ = {
 			isa = PBXGroup;
 			children = (
+				27AB619D2E94BC4B008E23FC /* SalykAPI.swift */,
 				27B1018C2E854226005B88D6 /* APIClient.swift */,
 			);
 			path = Networking;
@@ -430,6 +433,7 @@
 				27B101AF2E85C0B0005B88D6 /* ReceiptMatchStore.swift in Sources */,
 				27B1015D2E851246005B88D6 /* Receipt.swift in Sources */,
 				27B1015E2E851246005B88D6 /* ReceiptDetailView.swift in Sources */,
+				27AB619E2E94BC50008E23FC /* SalykAPI.swift in Sources */,
 				27B1015F2E851246005B88D6 /* ReceiptFetcher.swift in Sources */,
 				27B101602E851246005B88D6 /* ReceiptsMVPApp.swift in Sources */,
 				27B101612E851246005B88D6 /* ReceiptStore.swift in Sources */,

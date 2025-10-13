@@ -17,15 +17,20 @@ struct QRScannerView: UIViewControllerRepresentable {
         vc.onFound = onFound
         return vc
     }
+
     func updateUIViewController(_ uiViewController: ScannerVC, context: Context) {}
 }
+
+// MARK: - ScannerVC
 
 final class ScannerVC: UIViewController,
                        AVCaptureMetadataOutputObjectsDelegate,
                        AVCapturePhotoCaptureDelegate {
 
+    // MARK: Public
     var onFound: ((URL, UIImage?) -> Void)?
 
+    // MARK: Private
     private let session = AVCaptureSession()
     private let metadataOutput = AVCaptureMetadataOutput()
     private let photoOutput = AVCapturePhotoOutput()
@@ -35,10 +40,24 @@ final class ScannerVC: UIViewController,
     private var pendingURL: URL?
     private var lastCapturedImage: UIImage?
 
+    // MARK: Lifecycle
+
     override func viewDidLoad() {
         super.viewDidLoad()
         setupCamera()
     }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        // Чтобы превью корректно растягивалось после автолэйаута
+        previewLayer?.frame = view.bounds
+    }
+
+    deinit {
+        if session.isRunning { session.stopRunning() }
+    }
+
+    // MARK: Camera
 
     private func setupCamera() {
         // Разрешение на камеру (минимальная обработка)
@@ -46,19 +65,19 @@ final class ScannerVC: UIViewController,
             AVCaptureDevice.requestAccess(for: .video) { _ in }
         }
 
-        // 1) Начало конфигурации
         session.beginConfiguration()
 
-        // 2) Input
+        // Input
         guard let device = AVCaptureDevice.default(for: .video),
               let input = try? AVCaptureDeviceInput(device: device),
               session.canAddInput(input) else {
             session.commitConfiguration()
+            presentAlert(title: "Камера", message: "Не удалось получить доступ к камере.")
             return
         }
         session.addInput(input)
 
-        // 3) Outputs
+        // Outputs
         if session.canAddOutput(metadataOutput) {
             session.addOutput(metadataOutput)
             metadataOutput.setMetadataObjectsDelegate(self, queue: .main)
@@ -68,10 +87,9 @@ final class ScannerVC: UIViewController,
             session.addOutput(photoOutput)
         }
 
-        // 4) Завершение конфигурации ДО startRunning
         session.commitConfiguration()
 
-        // 5) Превью-слой
+        // Preview
         if previewLayer == nil {
             let layer = AVCaptureVideoPreviewLayer(session: session)
             layer.videoGravity = .resizeAspectFill
@@ -83,7 +101,6 @@ final class ScannerVC: UIViewController,
             previewLayer.frame = view.bounds
         }
 
-        // 6) Запуск уже после commitConfiguration
         if !session.isRunning {
             DispatchQueue.global(qos: .userInitiated).async { [weak self] in
                 self?.session.startRunning()
@@ -91,18 +108,26 @@ final class ScannerVC: UIViewController,
         }
     }
 
-    // Детект QR
+    // MARK: QR delegate
+
     func metadataOutput(_ output: AVCaptureMetadataOutput,
                         didOutput metadataObjects: [AVMetadataObject],
                         from connection: AVCaptureConnection) {
         guard !isProcessing,
               let obj = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
               obj.type == .qr,
-              let str = obj.stringValue,
-              let url = URL(string: str) else { return }
+              let raw = obj.stringValue else { return }
 
         isProcessing = true
-        pendingURL = url
+
+        // Нормализуем ссылку из QR (форсируем https и правильный домен)
+        guard let normalized = Self.normalizeSalykURL(raw) else {
+            isProcessing = false
+            presentAlert(title: "QR не распознан", message: "Это не ссылка на чек Салик. Попробуйте снова.")
+            return
+        }
+
+        pendingURL = normalized
 
         // Снимем кадр, затем вернём URL + фото
         let settings = AVCapturePhotoSettings()
@@ -128,10 +153,41 @@ final class ScannerVC: UIViewController,
         pendingURL = nil
         lastCapturedImage = nil
         isProcessing = false
-        if let url { onFound?(url, image) }
+
+        guard let url else {
+            presentAlert(title: "Ошибка", message: "Не удалось получить ссылку из QR.")
+            return
+        }
+        onFound?(url, image)
     }
 
-    deinit {
-        if session.isRunning { session.stopRunning() }
+    // MARK: Helpers
+
+    /// Принудительно делаем https и валидируем ссылку на ticket API
+    private static func normalizeSalykURL(_ raw: String) -> URL? {
+        var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // если в QR http — меняем на https
+        if s.hasPrefix("http://") { s = "https://" + s.dropFirst("http://".count) }
+
+        guard var comps = URLComponents(string: s) else { return nil }
+        comps.scheme = "https"                              // ATS-friendly
+        comps.host = "tax.salyk.kg"                         // фикс домена
+
+        // Должен быть путь вида /client/api/v1/ticket
+        guard let path = comps.path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              path.contains("/client/api/v1/ticket") else {
+            return nil
+        }
+        comps.path = path
+
+        return comps.url
+    }
+
+    private func presentAlert(title: String, message: String) {
+        // Показать простое сообщение вместо “тишины”
+        let ac = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        ac.addAction(UIAlertAction(title: "OK", style: .default))
+        self.present(ac, animated: true)
     }
 }
