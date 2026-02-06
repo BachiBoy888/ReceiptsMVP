@@ -70,7 +70,8 @@ final class ReceiptFetcher {
         Log.net.info("HTTP ok, bytes=\(data.count), time_ms=\(Int((t1 - t0)*1000))")
         Log.net.debug("HTML(head):\n\(html.split(separator: "\n").prefix(40).joined(separator: "\n"), privacy: .public)")
 
-        let parsed = try parseHTML(html)
+        let qrTotal = Self.totalFromQR(url)
+        let parsed = try parseHTML(html, qrTotal: qrTotal)
 
         // Лог распарсенных данных (кратко)
         Log.parse.info("merchant=\(parsed.merchant, privacy: .public), inn=\(parsed.inn ?? "-", privacy: .public)")
@@ -95,7 +96,7 @@ final class ReceiptFetcher {
        Parsing tuned for tax.salyk.kg
        =========================== */
 
-    private func parseHTML(_ html: String) throws -> ParsedReceipt {
+    private func parseHTML(_ html: String, qrTotal: Decimal?) throws -> ParsedReceipt {
         let doc = try SwiftSoup.parse(html)
 
         // ===== 1) Шапка (merchant / ИНН / адрес) — это div/span, не таблица =====
@@ -152,10 +153,11 @@ final class ReceiptFetcher {
         let sumItems: Decimal = items.reduce(0) { $0 + $1.sum }
 
         // Собираем кандидатов из разных подписй итога
+        // Важно: на странице есть слово "Итого" в шапке таблицы, поэтому нельзя просто брать max().
         let totalPatterns = [
-            #"(?i)\bИТОГ(?:О|А)?\b[^\d]{0,10}([\d\s\.,]+)"#,
-            #"(?i)\bК\s*ОПЛАТЕ\b[^\d]{0,10}([\d\s\.,]+)"#,
-            #"(?i)\bСУММА\s*ЧЕКА\b[^\d]{0,10}([\d\s\.,]+)"#
+            #"(?i)\bИТОГ(?:О|А)?\b[^\d]{0,20}([\d\s\.,]+)"#,
+            #"(?i)\bК\s*ОПЛАТЕ\b[^\d]{0,20}([\d\s\.,]+)"#,
+            #"(?i)\bСУММА\s*ЧЕКА\b[^\d]{0,20}([\d\s\.,]+)"#
         ]
 
         var totalCandidates: [Decimal] = []
@@ -167,14 +169,29 @@ final class ReceiptFetcher {
             }
         }
 
-        // Берём максимум из найденных кандидатов
-        let parsedMax: Decimal = totalCandidates.max() ?? 0
+        // Выбираем итог.
+        // 1) Если в QR/URL есть параметр sum (в тыйынах) -> используем его как основной источник,
+        //    а из HTML берём ближайший кандидат (если он достаточно близок).
+        // 2) Если qrTotal нет — берём ПОСЛЕДНИЙ найденный кандидат (обычно финальный "ИТОГО" внизу страницы).
+        // 3) Фоллбек — сумма позиций.
+        func bestTotal(qr: Decimal?, itemsSum: Decimal, candidates: [Decimal]) -> Decimal {
+            if let qr, qr > 0 {
+                if let closest = candidates.min(by: { abs($0 - qr) < abs($1 - qr) }) {
+                    // допускаем расхождение 2% или 1 сом (на случай округлений/скидок)
+                    let tol = max(Decimal(1), qr * Decimal(string: "0.02")!)
+                    if abs(closest - qr) <= tol {
+                        return closest
+                    }
+                }
+                return qr
+            }
+            if let last = candidates.last { return last }
+            return itemsSum
+        }
 
-        // Финальное правило: берём максимум между найденным по тексту и суммой позиций
-        let total: Decimal = max(parsedMax, sumItems)
-        
-        print("PARSE | totalCandidates=\(totalCandidates) sumItems=\(sumItems) -> total=\(total)")
+        let total: Decimal = bestTotal(qr: qrTotal, itemsSum: sumItems, candidates: totalCandidates)
 
+        Log.parse.debug("PARSE | qrTotal=\(String(describing: qrTotal), privacy: .public) totalCandidates=\(String(describing: totalCandidates), privacy: .public) sumItems=\(String(describing: sumItems), privacy: .public) -> total=\(String(describing: total), privacy: .public)")
 
         return ParsedReceipt(
             merchant: merchant,
@@ -199,6 +216,15 @@ final class ReceiptFetcher {
         // Latin1
         if let s = String(data: data, encoding: .isoLatin1) { return s }
         return nil
+    }
+
+    /// Считываем сумму из QR/URL параметра `sum`.
+    /// На tax.salyk.kg `sum` приходит в тыйынах (копейках) — поэтому делим на 100.
+    private static func totalFromQR(_ url: URL) -> Decimal? {
+        guard let comps = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let sumStr = comps.queryItems?.first(where: { $0.name == "sum" })?.value,
+              let sumMinor = Decimal(string: sumStr) else { return nil }
+        return sumMinor / 100
     }
 
     private static func decimal(from s: String) -> Decimal {
